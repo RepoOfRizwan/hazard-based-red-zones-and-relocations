@@ -1,0 +1,6 @@
+{
+  "name": "NDRF Hazard Red-Zone & Relocation DSS",
+  "description": "NDRF and MHA Decision Support System (SIH 2026 Problem ID 26191) for Hazard Red-Zone Identification, Carrying Capacity Assessment, and Vulnerability-based Relocation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
