@@ -1,6 +1,23 @@
 export type RiskZone = 'RED' | 'AMBER' | 'GREEN';
 export type ShelterStatus = 'AVAILABLE' | 'WARNING' | 'CRITICAL' | 'FULL';
 export type EvacuationStatus = 'PENDING' | 'ORDERED' | 'IN_TRANSIT' | 'EVACUATED';
+export type DominantHazard = 'FLOOD' | 'LANDSLIDE' | 'COMPOUND';
+
+export interface RegionConfig {
+  id: string;
+  name: string;
+  state: string;
+  country: string;
+  subtitle: string;
+  hazard_types: string[];
+  monsoon_season: string;
+  default_center: [number, number];
+  default_zoom: number;
+  is_flood_basin: boolean;
+  weather_lat: number;
+  weather_lon: number;
+  hazard_focus: string;
+}
 
 export interface PopulationData {
   total: number;
@@ -33,6 +50,10 @@ export interface FactorBreakdown {
   drainage_score: number;
   flood_score: number;
   formula: string;
+  dominant_hazard?: DominantHazard;
+  hazard_alert_type?: string;
+  flood_threat_score?: number;
+  landslide_threat_score?: number;
 }
 
 export interface ShelterSupplies {
@@ -77,6 +98,8 @@ export interface Habitation {
   risk_score: number;
   risk_zone: RiskZone;
   factor_breakdown: FactorBreakdown;
+  dominant_hazard?: DominantHazard;
+  hazard_alert_type?: string;
   priority_rank: number;
   priority_score: number; // Evacuation Priority Index (EPI)
   evacuation_status: EvacuationStatus;
@@ -92,6 +115,8 @@ export interface AlertNotification {
   habitation_name: string;
   timestamp: string;
   severity: 'CRITICAL' | 'WARNING' | 'ADVISORY';
+  dominant_hazard?: DominantHazard;
+  hazard_alert_type?: string;
   headline: string;
   description: string;
   recommended_action: string;
@@ -105,6 +130,8 @@ export interface SummaryStats {
   red_zone_count: number;
   amber_zone_count: number;
   green_zone_count: number;
+  flood_warnings_count?: number;
+  landslide_warnings_count?: number;
   at_risk_population: number;
   evacuated_population: number;
   pending_evacuations: number;

@@ -7,11 +7,17 @@ import {
   Zap,
   Building2,
   Clock,
-  CheckCircle2,
+  MapPin,
+  Waves,
+  Mountain,
 } from 'lucide-react';
 import { LiveWeatherData } from '../engines/weatherService';
+import { RegionConfig } from '../types';
 
 interface TacticalHeaderProps {
+  currentRegion: RegionConfig;
+  availableRegions: RegionConfig[];
+  onRegionChange: (regionId: string) => void;
   rainfallMm: number;
   onRainfallChange: (val: number) => void;
   onPresetSelect: (val: number) => void;
@@ -21,9 +27,14 @@ interface TacticalHeaderProps {
   liveWeather: LiveWeatherData | null;
   isSyncingWeather: boolean;
   redZoneCount: number;
+  floodWarningCount?: number;
+  landslideWarningCount?: number;
 }
 
 export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
+  currentRegion,
+  availableRegions,
+  onRegionChange,
   rainfallMm,
   onRainfallChange,
   onPresetSelect,
@@ -33,6 +44,8 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
   liveWeather,
   isSyncingWeather,
   redZoneCount,
+  floodWarningCount = 0,
+  landslideWarningCount = 0,
 }) => {
   const [currentTime, setCurrentTime] = useState('');
 
@@ -54,42 +67,74 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
   }, []);
 
   return (
-    <header className="bg-[#111827] border-b border-gray-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-lg">
-      {/* Brand / Logo */}
+    <header className="bg-[#111827] border-b border-gray-800 px-4 py-2 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-lg">
+      {/* Brand / Logo & Sector Info */}
       <div className="flex items-center gap-3">
         <div
           id="ndrf-logo-badge"
-          className="w-10 h-10 rounded-lg bg-red-950/80 border border-red-600 flex items-center justify-center text-red-400 font-black text-xl shadow-lg shadow-red-900/30"
+          className="w-10 h-10 rounded-lg bg-red-950/80 border border-red-600 flex items-center justify-center text-red-400 font-black text-xl shadow-lg shadow-red-900/30 shrink-0"
         >
           <ShieldAlert className="w-6 h-6 text-red-500 animate-pulse" />
         </div>
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="bg-red-600 text-white font-bold text-[11px] px-2 py-0.5 rounded tracking-wider uppercase">
               NDRF / MHA
             </span>
-            <span className="text-xs font-semibold text-gray-400">
-              SIH 2026 Problem ID: 26191
+            <span className="text-xs font-semibold text-gray-400 hidden sm:inline">
+              Disaster Management Division
             </span>
             {redZoneCount > 0 && (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                {redZoneCount} RED ZONES ACTIVE
+                {redZoneCount} RED ZONES
+              </span>
+            )}
+            {floodWarningCount > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
+                <Waves className="w-3 h-3 text-cyan-400" />
+                {floodWarningCount} Flood
+              </span>
+            )}
+            {landslideWarningCount > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-950 text-orange-300 border border-orange-800">
+                <Mountain className="w-3 h-3 text-orange-400" />
+                {landslideWarningCount} Landslide
               </span>
             )}
           </div>
-          <h1 className="text-sm md:text-base font-bold text-white tracking-tight flex items-center gap-2">
+          <h1 className="text-sm md:text-base font-bold text-white tracking-tight flex items-center gap-2 mt-0.5">
             Hazard Red-Zone & Relocation Decision Support System
-            <span className="text-xs font-normal text-cyan-400 hidden sm:inline">
-              | Wayanad Pilot (Meppadi - Chooralmala Corridor)
-            </span>
           </h1>
+          <div className="text-[11px] text-cyan-400 font-medium">
+            {currentRegion.subtitle}
+          </div>
         </div>
       </div>
 
-      {/* Simulation Controls Center */}
-      <div className="flex flex-wrap items-center gap-2.5 bg-[#1f2937]/90 px-3 py-1.5 rounded-lg border border-gray-700">
-        <div className="flex items-center gap-2">
+      {/* Sector Switcher & Telemetry Controls */}
+      <div className="flex flex-wrap items-center gap-2 bg-[#1f2937]/90 px-3 py-1.5 rounded-lg border border-gray-700">
+        {/* Sector / Location Changer Dropdown */}
+        <div className="flex items-center gap-1.5 bg-[#0e1726] border border-cyan-800/80 rounded px-2.5 py-1 text-xs">
+          <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <span className="text-gray-400 text-[11px] font-medium hidden md:inline">Sector:</span>
+          <select
+            id="select-region"
+            value={currentRegion.id}
+            onChange={(e) => onRegionChange(e.target.value)}
+            className="bg-transparent text-cyan-300 font-bold focus:outline-none cursor-pointer text-xs pr-1"
+            title="Switch operational sector / location"
+          >
+            {availableRegions.map((reg) => (
+              <option key={reg.id} value={reg.id} className="bg-[#111827] text-gray-200">
+                {reg.name} ({reg.is_flood_basin ? 'Flood Basin' : 'Mountain Landslides'})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Rainfall Simulation Slider */}
+        <div className="flex items-center gap-2 pl-1 border-l border-gray-700">
           <CloudRain className="w-4 h-4 text-cyan-400 shrink-0" />
           <div className="flex flex-col">
             <div className="flex items-center justify-between text-[11px] text-gray-300 font-medium">
@@ -107,7 +152,7 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
                 const val = parseFloat(e.target.value);
                 onRainfallChange(isNaN(val) ? 65 : val);
               }}
-              className="w-24 sm:w-32 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+              className="w-20 sm:w-28 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
               title="Adjust live/simulated rainfall in mm"
             />
           </div>
@@ -123,9 +168,9 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
                 ? 'bg-red-600 text-white shadow-md shadow-red-700/40'
                 : 'bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-800'
             }`}
-            title="Simulate sudden cloudburst (180mm)"
+            title="Simulate sudden cloudburst / embankment breach (180mm)"
           >
-            Cloudburst 180mm
+            Extreme 180mm
           </button>
           <button
             id="btn-preset-heavy"
@@ -149,7 +194,7 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
             }`}
             title="Baseline moderate rain (65mm)"
           >
-            Moderate 65mm
+            Baseline 65mm
           </button>
         </div>
 
@@ -160,7 +205,7 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
             onClick={onSyncLiveWeather}
             disabled={isSyncingWeather}
             className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-700 transition-colors disabled:opacity-50"
-            title="Fetch real-time precipitation telemetry from Open-Meteo"
+            title={`Fetch live telemetry for ${currentRegion.name}`}
           >
             <Zap className={`w-3 h-3 ${isSyncingWeather ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Live Weather</span>
@@ -169,7 +214,7 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
             id="btn-reset-baseline"
             onClick={onReset}
             className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600 transition-colors"
-            title="Reset system to initial state"
+            title="Reset simulation to default state"
           >
             <RotateCcw className="w-3 h-3" />
             <span className="hidden sm:inline">Reset</span>
@@ -177,7 +222,7 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
         </div>
       </div>
 
-      {/* Right Telemetry Info */}
+      {/* Right Telemetry & Actions */}
       <div className="flex items-center gap-3">
         <button
           id="btn-open-shelter-audit"

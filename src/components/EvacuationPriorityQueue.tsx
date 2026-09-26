@@ -10,6 +10,8 @@ import {
   Filter,
   Navigation,
   AlertOctagon,
+  Waves,
+  Mountain,
 } from 'lucide-react';
 import { Habitation, RiskZone } from '../types';
 
@@ -45,7 +47,8 @@ export const EvacuationPriorityQueue: React.FC<EvacuationPriorityQueueProps> = (
     .filter(
       (h) =>
         h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        h.taluk.toLowerCase().includes(searchQuery.toLowerCase())
+        h.taluk.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        h.district.toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => b.priority_score - a.priority_score);
 
@@ -58,23 +61,23 @@ export const EvacuationPriorityQueue: React.FC<EvacuationPriorityQueueProps> = (
             <Truck className="w-4 h-4 text-amber-400" />
             <span>Evacuation Priority Queue</span>
           </div>
-          <span className="text-[10px] bg-gray-800 text-gray-300 px-1.5 py-0.5 rounded font-mono">
-            {filtered.length} Habitations
+          <span className="text-[10px] bg-gray-800 px-2 py-0.5 rounded text-cyan-300 font-mono">
+            {habitations.length} Habitations
           </span>
         </div>
         <p className="text-[11px] text-gray-400 mt-1">
-          Ranked by multi-dimensional Evacuation Priority Index (EPI)
+          Automated multi-factor vulnerability rank (EPI = 40% Hazard + 25% Demographics + 20% Isolation + 15% Housing Fragility)
         </p>
 
-        {/* Filter Pills */}
-        <div className="flex items-center gap-1 mt-2.5">
+        {/* Tab Filters */}
+        <div className="flex items-center gap-1.5 mt-2.5">
           <button
             id="filter-all"
             onClick={() => onFilterChange('ALL')}
             className={`px-2 py-1 text-[10px] font-semibold rounded transition-colors ${
               activeFilter === 'ALL'
-                ? 'bg-gray-700 text-white'
-                : 'bg-gray-800/80 text-gray-400 hover:text-gray-200'
+                ? 'bg-cyan-700 text-white'
+                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
             }`}
           >
             All ({habitations.length})
@@ -84,7 +87,7 @@ export const EvacuationPriorityQueue: React.FC<EvacuationPriorityQueueProps> = (
             onClick={() => onFilterChange('RED')}
             className={`px-2 py-1 text-[10px] font-semibold rounded transition-colors ${
               activeFilter === 'RED'
-                ? 'bg-red-700 text-white shadow'
+                ? 'bg-red-700 text-white'
                 : 'bg-red-950/40 text-red-400 hover:bg-red-900/60 border border-red-900/50'
             }`}
           >
@@ -118,7 +121,7 @@ export const EvacuationPriorityQueue: React.FC<EvacuationPriorityQueueProps> = (
         <input
           id="search-habitations"
           type="text"
-          placeholder="Search habitation (e.g. Mundakkai)..."
+          placeholder="Search habitation or block..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full mt-2 px-2.5 py-1 bg-gray-900 border border-gray-700 rounded text-gray-200 placeholder-gray-500 text-[11px] focus:outline-none focus:border-cyan-500"
@@ -137,11 +140,7 @@ export const EvacuationPriorityQueue: React.FC<EvacuationPriorityQueueProps> = (
             const isRed = hab.risk_zone === 'RED';
             const isAmber = hab.risk_zone === 'AMBER';
             const isEvacuated = hab.evacuation_status === 'EVACUATED';
-            const vulnTotal =
-              hab.population.elderly_65 +
-              hab.population.infants_5 +
-              hab.population.pwd +
-              hab.population.medically_dependent;
+            const isFlood = hab.dominant_hazard === 'FLOOD';
 
             return (
               <div
@@ -181,15 +180,21 @@ export const EvacuationPriorityQueue: React.FC<EvacuationPriorityQueueProps> = (
                         {hab.name}
                         {hab.infrastructure.bridge_washout_risk && (
                           <span
-                            title="Single bridge washout risk: immediate bottleneck"
+                            title="Single bridge/causeway washout risk: immediate bottleneck"
                             className="text-red-400"
                           >
                             <AlertOctagon className="w-3.5 h-3.5 inline animate-pulse" />
                           </span>
                         )}
                       </h4>
-                      <div className="text-[10px] text-gray-400">
-                        {hab.taluk} Taluk • {hab.elevation_m}m elev • {hab.population.total} residents
+                      <div className="text-[10px] text-gray-400 flex items-center gap-1.5 mt-0.5">
+                        <span className={`inline-flex items-center gap-0.5 font-bold px-1.5 py-0.2 rounded text-[9px] ${
+                          isFlood ? 'bg-cyan-950 text-cyan-300 border border-cyan-800' : 'bg-orange-950 text-orange-300 border border-orange-800'
+                        }`}>
+                          {isFlood ? <Waves className="w-2.5 h-2.5" /> : <Mountain className="w-2.5 h-2.5" />}
+                          {isFlood ? 'Flood Basin' : 'Landslide Zone'}
+                        </span>
+                        <span>{hab.taluk} • {hab.district} • {hab.population.total} residents</span>
                       </div>
                     </div>
                   </div>

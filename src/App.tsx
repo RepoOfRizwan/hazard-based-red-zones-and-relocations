@@ -5,7 +5,17 @@ import {
   AlertNotification,
   SummaryStats,
 } from './types';
-import { INITIAL_HABITATIONS, INITIAL_SHELTERS } from './data/seedData';
+import {
+  REGIONS,
+  WAYANAD_HABITATIONS,
+  WAYANAD_SHELTERS,
+  BIHAR_HABITATIONS,
+  BIHAR_SHELTERS,
+  ASSAM_HABITATIONS,
+  ASSAM_SHELTERS,
+  UP_HABITATIONS,
+  UP_SHELTERS,
+} from './data/seedData';
 import { HazardRiskEngine } from './engines/hazardEngine';
 import { CarryingCapacityEngine } from './engines/capacityEngine';
 import { PriorityRankingEngine } from './engines/priorityEngine';
@@ -22,10 +32,17 @@ import { AlertDispatcherModal } from './components/AlertDispatcherModal';
 import { ShelterAuditDrawer } from './components/ShelterAuditDrawer';
 
 export default function App() {
-  // State
-  const [rainfallMm, setRainfallMm] = useState<number>(65.0);
+  // Region / Sector State
+  const availableRegions = useMemo(() => Object.values(REGIONS), []);
+  const [selectedRegionId, setSelectedRegionId] = useState<string>('bihar');
+  const currentRegion = REGIONS[selectedRegionId] || REGIONS.wayanad;
+
+  // Simulation State
+  const [rainfallMm, setRainfallMm] = useState<number>(currentRegion.is_flood_basin ? 95.0 : 65.0);
   const [evacuatedHabitationIds, setEvacuatedHabitationIds] = useState<Set<string>>(new Set());
-  const [selectedHabitationId, setSelectedHabitationId] = useState<string | null>('HAB-001'); // Start with Mundakkai
+  const [selectedHabitationId, setSelectedHabitationId] = useState<string | null>(
+    currentRegion.id === 'bihar' ? 'BIH-001' : 'HAB-001'
+  );
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'RED' | 'AMBER' | 'EVACUATED'>('ALL');
   const [currentAlert, setCurrentAlert] = useState<AlertNotification | null>(null);
   const [isShelterAuditOpen, setIsShelterAuditOpen] = useState<boolean>(false);
@@ -41,13 +58,62 @@ export default function App() {
     }, 3500);
   }, []);
 
+  // Handle Sector / Region Change
+  const handleRegionChange = (newRegionId: string) => {
+    if (!REGIONS[newRegionId]) return;
+    setSelectedRegionId(newRegionId);
+    const targetRegion = REGIONS[newRegionId];
+    
+    // Set appropriate initial rainfall and clear previous evacuations
+    const initialRain = targetRegion.is_flood_basin ? 95.0 : 65.0;
+    setRainfallMm(initialRain);
+    setEvacuatedHabitationIds(new Set());
+    const defaultHabId =
+      newRegionId === 'bihar'
+        ? 'BIH-001'
+        : newRegionId === 'assam'
+        ? 'ASM-001'
+        : newRegionId === 'uttar_pradesh'
+        ? 'UP-001'
+        : 'HAB-001';
+    setSelectedHabitationId(defaultHabId);
+    setActiveFilter('ALL');
+    showToast(`Operational Sector switched to: ${targetRegion.name}`);
+  };
+
+  // Raw Habitations and Shelters based on Region
+  const rawHabitations =
+    currentRegion.id === 'bihar'
+      ? BIHAR_HABITATIONS
+      : currentRegion.id === 'assam'
+      ? ASSAM_HABITATIONS
+      : currentRegion.id === 'uttar_pradesh'
+      ? UP_HABITATIONS
+      : WAYANAD_HABITATIONS;
+
+  const rawShelters =
+    currentRegion.id === 'bihar'
+      ? BIHAR_SHELTERS
+      : currentRegion.id === 'assam'
+      ? ASSAM_SHELTERS
+      : currentRegion.id === 'uttar_pradesh'
+      ? UP_SHELTERS
+      : WAYANAD_SHELTERS;
+
   // Compute Habitations and Shelters dynamically
   const { habitations, evaluatedShelters } = useMemo(() => {
     // 1. Compute Hazard Risk & Priority Index for each habitation
-    const baseHabs: Habitation[] = INITIAL_HABITATIONS.map((raw) => {
-      const { risk_score, risk_zone, factor_breakdown } = HazardRiskEngine.computeRisk(
+    const baseHabs: Habitation[] = rawHabitations.map((raw) => {
+      const {
+        risk_score,
+        risk_zone,
+        factor_breakdown,
+        dominant_hazard,
+        hazard_alert_type,
+      } = HazardRiskEngine.computeRisk(
         raw.terrain,
-        rainfallMm
+        rainfallMm,
+        currentRegion.is_flood_basin
       );
 
       const priority_score = PriorityRankingEngine.computePriorityScore({
@@ -64,15 +130,16 @@ export default function App() {
         risk_score,
         risk_zone,
         factor_breakdown,
+        dominant_hazard,
+        hazard_alert_type,
         priority_rank: 0,
         priority_score,
         evacuation_status: isEvacuated ? 'EVACUATED' : 'PENDING',
       };
     });
 
-    // 2. Evaluate candidate shelters with base occupancy + newly evacuated occupants
-    const initialEvaluatedShelters: ShelterSite[] = INITIAL_SHELTERS.map((s) => {
-      // Find habitations assigned to this shelter that are evacuated
+    // 2. Evaluate candidate shelters with base occupancy
+    const initialEvaluatedShelters: ShelterSite[] = rawShelters.map((s) => {
       return CarryingCapacityEngine.evaluateShelter(s);
     });
 
@@ -103,13 +170,16 @@ export default function App() {
       habitations: assignedHabs,
       evaluatedShelters: sheltersWithEvacuees,
     };
-  }, [rainfallMm, evacuatedHabitationIds]);
+  }, [rawHabitations, rawShelters, rainfallMm, currentRegion.is_flood_basin, evacuatedHabitationIds]);
 
   // Compute Aggregated Summary Stats for the KPI Banner
   const summaryStats: SummaryStats = useMemo(() => {
     const redHabs = habitations.filter((h) => h.risk_zone === 'RED');
     const amberHabs = habitations.filter((h) => h.risk_zone === 'AMBER');
     const greenHabs = habitations.filter((h) => h.risk_zone === 'GREEN');
+
+    const floodWarnings = habitations.filter((h) => h.dominant_hazard === 'FLOOD' && h.risk_zone !== 'GREEN').length;
+    const landslideWarnings = habitations.filter((h) => h.dominant_hazard === 'LANDSLIDE' && h.risk_zone !== 'GREEN').length;
 
     const atRiskPop = habitations
       .filter((h) => (h.risk_zone === 'RED' || h.risk_zone === 'AMBER') && h.evacuation_status !== 'EVACUATED')
@@ -138,6 +208,8 @@ export default function App() {
       red_zone_count: redHabs.length,
       amber_zone_count: amberHabs.length,
       green_zone_count: greenHabs.length,
+      flood_warnings_count: floodWarnings,
+      landslide_warnings_count: landslideWarnings,
       at_risk_population: atRiskPop,
       evacuated_population: evacuatedPop,
       pending_evacuations: pendingEvac,
@@ -155,15 +227,19 @@ export default function App() {
     };
   }, [habitations, evaluatedShelters, rainfallMm]);
 
-  // Fetch Live Weather on Mount
+  // Fetch Live Weather when switching region
   useEffect(() => {
     handleSyncLiveWeather();
-  }, []);
+  }, [currentRegion.id]);
 
   const handleSyncLiveWeather = async () => {
     setIsSyncingWeather(true);
     try {
-      const data = await WeatherService.fetchLiveRainfall();
+      const data = await WeatherService.fetchLiveRainfall(
+        currentRegion.weather_lat,
+        currentRegion.weather_lon,
+        currentRegion.name
+      );
       setLiveWeather(data);
       if (data.current_rain_mm > 0) {
         setRainfallMm(data.current_rain_mm);
@@ -198,19 +274,31 @@ export default function App() {
   };
 
   const handleReset = () => {
-    setRainfallMm(65.0);
+    const baseline = currentRegion.is_flood_basin ? 95.0 : 65.0;
+    setRainfallMm(baseline);
     setEvacuatedHabitationIds(new Set());
-    setSelectedHabitationId('HAB-001');
+    const defaultId =
+      currentRegion.id === 'bihar'
+        ? 'BIH-001'
+        : currentRegion.id === 'assam'
+        ? 'ASM-001'
+        : currentRegion.id === 'uttar_pradesh'
+        ? 'UP-001'
+        : 'HAB-001';
+    setSelectedHabitationId(defaultId);
     setActiveFilter('ALL');
-    showToast('System reset to initial baseline telemetry.');
+    showToast('System reset to baseline telemetry.');
   };
 
   const selectedHabitation = habitations.find((h) => h.id === selectedHabitationId) || habitations[0] || null;
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#0b0f19] text-gray-100 overflow-hidden select-none">
-      {/* 1. Tactical Mission Control Header */}
+      {/* 1. Tactical Mission Control Header with Location / Sector Changer */}
       <TacticalHeader
+        currentRegion={currentRegion}
+        availableRegions={availableRegions}
+        onRegionChange={handleRegionChange}
         rainfallMm={rainfallMm}
         onRainfallChange={setRainfallMm}
         onPresetSelect={(val) => {
@@ -223,6 +311,8 @@ export default function App() {
         liveWeather={liveWeather}
         isSyncingWeather={isSyncingWeather}
         redZoneCount={summaryStats.red_zone_count}
+        floodWarningCount={summaryStats.flood_warnings_count}
+        landslideWarningCount={summaryStats.landslide_warnings_count}
       />
 
       {/* 2. Top KPI Summary Banner */}
@@ -250,6 +340,7 @@ export default function App() {
         {/* Center Column: GIS Tactical Leaflet Map */}
         <div className="col-span-1 md:col-span-5 lg:col-span-5 h-full relative overflow-hidden">
           <TacticalMap
+            currentRegion={currentRegion}
             habitations={habitations}
             shelters={evaluatedShelters}
             selectedHabitationId={selectedHabitationId}
@@ -288,7 +379,7 @@ export default function App() {
           onClick={() => setIsShelterAuditOpen(true)}
           className="px-2 py-1 rounded bg-blue-900 text-blue-200 text-[11px]"
         >
-          Shelters (5)
+          Shelters ({evaluatedShelters.length})
         </button>
       </div>
 

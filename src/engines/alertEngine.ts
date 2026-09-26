@@ -4,6 +4,7 @@ export class AlertEngine {
   /**
    * Generates simulated multi-channel disaster notifications (SMS, WhatsApp, NDMA Sachet CAP format)
    * when habitations trigger Red/Amber Zone emergency thresholds.
+   * Dynamically differentiates between FLOOD WARNINGS and LANDSLIDE WARNINGS.
    */
   public static generateAlert(hab: Habitation): AlertNotification {
     const dateNow = new Date();
@@ -26,21 +27,29 @@ export class AlertEngine {
     const isRed = hab.risk_zone === 'RED';
     const severity = isRed ? 'CRITICAL' : hab.risk_zone === 'AMBER' ? 'WARNING' : 'ADVISORY';
 
-    const headline = isRed
-      ? `CRITICAL RED ZONE ALERT: Immediate Relocation Mandated for ${hab.name}`
-      : `AMBER ZONE ADVISORY: Heightened Flood/Slide Vigilance for ${hab.name}`;
+    const hazardType = hab.hazard_alert_type || (hab.dominant_hazard === 'FLOOD' ? 'FLASH FLOOD & INUNDATION' : 'DEBRIS FLOW & LANDSLIDE');
+    const dominant = hab.dominant_hazard || 'LANDSLIDE';
 
-    const description = `Habitation ${hab.name} (${hab.taluk} Taluk, Wayanad) has crossed hazard risk threshold with a score of ${hab.risk_score}/100 under monsoon precipitation (${hab.rainfall_mm}mm). High susceptibility to debris torrent and slope failure. ${
+    const headline = isRed
+      ? `CRITICAL RED ZONE [${dominant}]: Immediate Relocation Mandated for ${hab.name}`
+      : `AMBER ZONE [${dominant} ADVISORY]: Heightened Surveillance for ${hab.name}`;
+
+    const hazardCause = dominant === 'FLOOD'
+      ? `river embankment overtopping and severe low-lying inundation`
+      : `sudden regolith slope failure and debris torrent`;
+
+    const description = `Habitation ${hab.name} (${hab.taluk} Taluk, ${hab.district}) has crossed emergency risk threshold with a score of ${hab.risk_score}/100 under heavy monsoon precipitation (${hab.rainfall_mm}mm). High susceptibility to ${hazardCause}. ${
       vuln.elderly_65 + vuln.pwd + vuln.medically_dependent
     } vulnerable residents need priority convoy evacuation.`;
 
-    const recommendedAction = `Initiate immediate tactical evacuation of ${hab.population.total} residents. Primary assembly point: ${hab.name} Junction. Designated destination: ${shelterName} (${distKm} km). Access route: ${infra.access_route_name}. Avoid flooded low-lying culverts.`;
+    const recommendedAction = `Initiate immediate tactical evacuation of ${hab.population.total} residents. Primary assembly point: ${hab.name} High Ground / Junction. Designated destination: ${shelterName} (${distKm} km). Access route: ${infra.access_route_name}. Avoid flooded low-lying culverts and erosion zones.`;
 
-    const smsPreview = `🚨 [NDRF/SDMA FLASH ALERT] ${hab.risk_zone} ZONE: ${hab.name} (Risk: ${hab.risk_score}/100). Evacuation: Move to ${shelterName} (${distKm}km) via ${infra.access_route_name}. Priority assistance for elderly/disabled. Emergency Control Room: 1077 / 112.`;
+    const smsPreview = `🚨 [NDRF/SDMA FLASH ALERT] ${hab.risk_zone} ZONE [${dominant}]: ${hab.name} (Risk: ${hab.risk_score}/100). Mandatory relocation: Proceed to ${shelterName} (${distKm}km) via ${infra.access_route_name}. Priority assistance active for elderly/PwD. Control Room: 1077 / 112.`;
 
-    const whatsappPreview = `🔴 *MHA / NDRF & KSDMA CONTROL ROOM EMERGENCY DISPATCH*
+    const whatsappPreview = `🔴 *MHA / NDRF CONTROL ROOM EMERGENCY DISPATCH*
 *Time:* ${nowStr} IST
-*Location:* ${hab.name}, ${hab.taluk} Taluk, Wayanad District
+*Location:* ${hab.name}, ${hab.taluk} Taluk, ${hab.district}
+*Threat Type:* ${hazardType}
 *Hazard Level:* ${severity} ${hab.risk_zone} ZONE (Risk Score: ${hab.risk_score}/100)
 *Recorded Rainfall:* ${hab.rainfall_mm} mm
 
@@ -54,31 +63,30 @@ export class AlertEngine {
 • Geodesic Distance: ${distKm} km
 • Primary Transit Route: ${infra.access_route_name} ${infra.bridge_washout_risk ? '⚠️ [BRIDGE WASHOUT RISK: PROCEED WITH CAUTION]' : ''}
 
-📞 *EMERGENCY ASSISTANCE:*
+📞 *EMERGENCY DISPATCH:*
 • District Disaster Control: 1077
 • Police / NDRF Emergency: 112`;
 
     const capXmlPreview = `<?xml version="1.0" encoding="UTF-8"?>
 <alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
   <identifier>${alertId}</identifier>
-  <sender>NDRF-HQ-DISASTER-OPS@ndma.gov.in</sender>
+  <sender>NDRF-MHA-DM-CONTROL@gov.in</sender>
   <sent>${timestampIso}</sent>
   <status>Actual</status>
   <msgType>Alert</msgType>
   <scope>Public</scope>
   <info>
-    <category>Geo</category>
-    <category>Met</category>
-    <event>Landslide & Debris Flow Red Zone</event>
-    <urgency>${isRed ? 'Immediate' : 'Expected'}</urgency>
-    <severity>${isRed ? 'Extreme' : 'Severe'}</severity>
+    <category>Safety</category>
+    <event>${hazardType}</event>
+    <urgency>Immediate</urgency>
+    <severity>${severity}</severity>
     <certainty>Observed</certainty>
     <headline>${headline}</headline>
     <description>${description}</description>
     <instruction>${recommendedAction}</instruction>
     <area>
-      <areaDesc>${hab.name}, ${hab.taluk} Taluk, Wayanad, Kerala</areaDesc>
-      <circle>${hab.coordinates[0]},${hab.coordinates[1]},1.5</circle>
+      <areaDesc>${hab.name}, ${hab.taluk}, ${hab.district}</areaDesc>
+      <circle>${hab.coordinates[0]},${hab.coordinates[1]},2.0</circle>
     </area>
   </info>
 </alert>`;
@@ -89,9 +97,11 @@ export class AlertEngine {
       habitation_name: hab.name,
       timestamp: nowStr,
       severity,
+      dominant_hazard: dominant,
+      hazard_alert_type: hazardType,
       headline,
       description,
-      recommended_action: recommendedAction,
+      recommendedAction,
       sms_preview: smsPreview,
       whatsapp_preview: whatsappPreview,
       cap_xml_preview: capXmlPreview,

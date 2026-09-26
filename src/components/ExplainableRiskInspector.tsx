@@ -75,8 +75,11 @@ export const ExplainableRiskInspector: React.FC<ExplainableRiskInspectorProps> =
                 {habitation.risk_zone} ZONE ({habitation.risk_score}/100)
               </span>
             </div>
+            <div className="text-[11px] text-cyan-400 font-bold mt-0.5">
+              {habitation.hazard_alert_type || (habitation.dominant_hazard === 'FLOOD' ? 'FLASH FLOOD WARNING' : 'LANDSLIDE WARNING')}
+            </div>
             <div className="text-[11px] text-gray-400 mt-0.5">
-              {habitation.taluk} Taluk, Wayanad • Elevation: {habitation.elevation_m}m • Slope: {habitation.terrain.slope_deg}°
+              {habitation.taluk} Block, {habitation.district} • Elevation: {habitation.elevation_m}m • Slope: {habitation.terrain.slope_deg}°
             </div>
           </div>
 

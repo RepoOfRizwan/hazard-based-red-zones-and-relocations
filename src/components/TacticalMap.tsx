@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import { Habitation, ShelterSite } from '../types';
-import { Layers, Compass, ZoomIn, ZoomOut, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Habitation, ShelterSite, RegionConfig } from '../types';
+import { Layers, Compass, ZoomIn, ZoomOut, RotateCcw, AlertTriangle, Waves, Mountain } from 'lucide-react';
 
 interface TacticalMapProps {
+  currentRegion: RegionConfig;
   habitations: Habitation[];
   shelters: ShelterSite[];
   selectedHabitationId: string | null;
@@ -13,6 +14,7 @@ interface TacticalMapProps {
 }
 
 export const TacticalMap: React.FC<TacticalMapProps> = ({
+  currentRegion,
   habitations,
   shelters,
   selectedHabitationId,
@@ -36,10 +38,6 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
   const [showContours, setShowContours] = useState(true);
   const [showLayerMenu, setShowLayerMenu] = useState(false);
 
-  // Default Wayanad coordinates
-  const WAYANAD_CENTER: [number, number] = [11.56, 76.14];
-  const DEFAULT_ZOOM = 12;
-
   // Helper to strictly validate LatLng coordinates and avoid (NaN, NaN) Leaflet errors
   const isValidLatLng = (c: any): c is [number, number] => {
     return (
@@ -60,8 +58,8 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
 
     try {
       const map = L.map(mapContainerRef.current, {
-        center: WAYANAD_CENTER,
-        zoom: DEFAULT_ZOOM,
+        center: currentRegion.default_center,
+        zoom: currentRegion.default_zoom,
         zoomControl: false,
       });
 
@@ -106,6 +104,19 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
     }
   }, []);
 
+  // Center change when switching regions
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    try {
+      map.setView(currentRegion.default_center, currentRegion.default_zoom, {
+        animate: true,
+      });
+    } catch {
+      // Ignore navigation error
+    }
+  }, [currentRegion]);
+
   // Update Layers whenever habitations or shelters change
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -144,7 +155,7 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
       });
     }
 
-    // 2. Plot Hazard Risk Buffer Contours
+    // 2. Plot Hazard Risk Buffer Circles
     if (showContours && contoursLayerRef.current) {
       habitations.forEach((hab) => {
         const isRed = hab.risk_zone === 'RED';
@@ -154,7 +165,7 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
 
         // Radius proportional to slope & risk score (strictly guarded against NaN)
         const safeRiskScore = typeof hab.risk_score === 'number' && !isNaN(hab.risk_score) ? hab.risk_score : 50;
-        const radiusMeters = Math.max(100, Math.min(2000, 350 + safeRiskScore * 7.5));
+        const radiusMeters = Math.max(120, Math.min(2400, 400 + safeRiskScore * 8.0));
         const circle = L.circle(hab.coordinates, {
           radius: radiusMeters,
           color: isRed ? '#ef4444' : '#f59e0b',
@@ -206,11 +217,11 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
         const marker = L.marker(shelter.coordinates, { icon });
 
         marker.bindPopup(`
-          <div style="font-family: inherit; font-size: 12px; width: 230px; line-height: 1.4;">
+          <div style="font-family: inherit; font-size: 12px; width: 240px; line-height: 1.4;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
               <strong style="color: #38bdf8;">${shelter.name}</strong>
             </div>
-            <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px;">${shelter.taluk} Taluk • ${shelter.usable_living_area_sqm} m² usable area</div>
+            <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px;">${shelter.taluk} Block • ${shelter.usable_living_area_sqm} m² usable area</div>
             <div style="background: #1e293b; padding: 6px 8px; border-radius: 6px; margin-bottom: 6px;">
               <div>Sphere Safe Capacity: <strong style="color: #f1f5f9;">${shelter.max_safe_capacity} persons</strong></div>
               <div>Current Occupancy: <strong style="color: ${statusColor};">${shelter.current_occupancy} (${occPct}%)</strong></div>
@@ -236,6 +247,7 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
         const isRed = hab.risk_zone === 'RED';
         const isAmber = hab.risk_zone === 'AMBER';
         const isEvacuated = hab.evacuation_status === 'EVACUATED';
+        const isFlood = hab.dominant_hazard === 'FLOOD';
 
         let badgeBg = '#10b981';
         let pulseClass = '';
@@ -250,6 +262,8 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
         }
 
         const size = isSelected ? 40 : 32;
+        const hazardBadge = isFlood ? '🌊' : '⛰️';
+
         const habIconHtml = `
           <div class="${pulseClass}" style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; width: ${size}px; height: ${size}px; background: #0f172a; border: ${
           isSelected ? '3px solid #38bdf8' : `2px solid ${badgeBg}`
@@ -258,7 +272,7 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
               ${isEvacuated ? '✓' : Math.round(hab.risk_score)}
             </div>
             <div style="position: absolute; top: -16px; background: #090d16; color: #f8fafc; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; border: 1px solid #334155; white-space: nowrap;">
-              ${hab.name}
+              ${hazardBadge} ${hab.name}
             </div>
           </div>
         `;
@@ -278,15 +292,18 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
         });
 
         marker.bindPopup(`
-          <div style="font-family: inherit; font-size: 12px; width: 230px; line-height: 1.4;">
+          <div style="font-family: inherit; font-size: 12px; width: 240px; line-height: 1.4;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px;">
               <strong style="font-size: 13px; color: #f8fafc;">${hab.name}</strong>
               <span style="background: ${badgeBg}; color: white; padding: 1px 6px; border-radius: 4px; font-weight: 800; font-size: 10px;">
                 ${hab.risk_zone} (${hab.risk_score})
               </span>
             </div>
+            <div style="color: #38bdf8; font-size: 10.5px; font-weight: 700; margin-bottom: 4px;">
+              ${hab.hazard_alert_type || (isFlood ? 'FLASH FLOOD THREAT' : 'LANDSLIDE THREAT')}
+            </div>
             <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px;">
-              ${hab.taluk} Taluk • ${hab.elevation_m}m elevation • ${hab.terrain.slope_deg}° slope
+              ${hab.taluk} Taluk • ${hab.district} • ${hab.elevation_m}m elevation • ${hab.terrain.slope_deg}° slope
             </div>
             <div style="background: #1e293b; padding: 6px; border-radius: 6px; margin-bottom: 6px; font-size: 11px;">
               <div>Population: <strong>${hab.population.total}</strong> (${hab.population.households} HH)</div>
@@ -296,7 +313,7 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
               <div>Evacuation Priority: <strong style="color: #38bdf8;">Rank #${hab.priority_rank} (EPI: ${hab.priority_score})</strong></div>
               ${
                 hab.infrastructure.bridge_washout_risk
-                  ? '<div style="color: #f87171; font-weight: bold; margin-top: 2px;">⚠️ Single bridge washout threat!</div>'
+                  ? '<div style="color: #f87171; font-weight: bold; margin-top: 2px;">⚠️ Single access washout threat!</div>'
                   : ''
               }
             </div>
@@ -352,90 +369,60 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
     }
   }, [selectedHabitationId, habitations]);
 
-  // Quick Map Navigation Handlers
-  const handleFlyToCorridor = () => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-    const target: [number, number] = [11.535, 76.155];
-    try {
-      const size = map.getSize();
-      if (size && size.x > 0 && size.y > 0) {
-        map.flyTo(target, 13.5, { duration: 1.0 });
-      } else {
-        map.setView(target, 13.5);
-      }
-    } catch {
-      map.setView(target, 13.5);
-    }
-  };
-
-  const handleResetView = () => {
+  // Reset to current region bounds
+  const handleResetSectorView = () => {
     const map = mapInstanceRef.current;
     if (!map) return;
     try {
-      const size = map.getSize();
-      if (size && size.x > 0 && size.y > 0) {
-        map.flyTo(WAYANAD_CENTER, DEFAULT_ZOOM, { duration: 1.0 });
-      } else {
-        map.setView(WAYANAD_CENTER, DEFAULT_ZOOM);
-      }
+      map.flyTo(currentRegion.default_center, currentRegion.default_zoom, { duration: 1.0 });
     } catch {
-      map.setView(WAYANAD_CENTER, DEFAULT_ZOOM);
+      map.setView(currentRegion.default_center, currentRegion.default_zoom);
     }
   };
 
   return (
-    <div className="relative w-full h-full bg-[#090d16] flex flex-col overflow-hidden">
-      {/* Map Element */}
-      <div id="map" ref={mapContainerRef} className="w-full h-full z-0" />
+    <div className="relative w-full h-full bg-[#0b0f19] overflow-hidden">
+      {/* Map Leaflet Container */}
+      <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-      {/* Top Left: Active Hazard Status Overlay */}
-      <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-2 pointer-events-auto">
-        <div className="bg-[#111827]/90 backdrop-blur border border-gray-700 px-3 py-1.5 rounded-lg shadow-xl text-xs flex items-center gap-2.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></div>
-          <div>
-            <div className="font-bold text-gray-200">TACTICAL GIS RADAR</div>
-            <div className="text-[10px] text-gray-400">
-              Wayanad Landslide Susceptibility Corridor
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Fly-To Buttons */}
-        <div className="flex items-center gap-1">
-          <button
-            id="btn-fly-corridor"
-            onClick={handleFlyToCorridor}
-            className="px-2 py-1 rounded bg-[#1f2937]/90 hover:bg-gray-700 text-gray-200 text-[10px] font-semibold border border-gray-600 shadow transition-all"
-          >
-            Mundakkai-Chooralmala Focus
-          </button>
-          <button
-            id="btn-fly-reset"
-            onClick={handleResetView}
-            className="px-2 py-1 rounded bg-[#1f2937]/90 hover:bg-gray-700 text-gray-200 text-[10px] font-semibold border border-gray-600 shadow transition-all"
-          >
-            Reset District View
-          </button>
+      {/* Top Left Sector Indicator */}
+      <div className="absolute top-3 left-3 z-[1000] bg-[#111827]/90 backdrop-blur border border-gray-700/80 px-3 py-1.5 rounded-lg shadow-xl text-xs text-gray-200 pointer-events-auto flex items-center gap-2">
+        {currentRegion.is_flood_basin ? (
+          <Waves className="w-4 h-4 text-cyan-400" />
+        ) : (
+          <Mountain className="w-4 h-4 text-orange-400" />
+        )}
+        <div>
+          <div className="font-bold text-white text-[12px]">{currentRegion.name}</div>
+          <div className="text-[10px] text-gray-400">{currentRegion.hazard_focus}</div>
         </div>
       </div>
 
-      {/* Top Right: Layer Visibility Control */}
-      <div className="absolute top-3 right-3 z-[1000] pointer-events-auto">
+      {/* Top Right Quick Controls */}
+      <div className="absolute top-3 right-3 z-[1000] flex flex-col items-end gap-1.5 pointer-events-auto">
+        <button
+          onClick={handleResetSectorView}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1f2937]/90 hover:bg-gray-700 text-gray-200 border border-gray-600 rounded-md text-xs font-semibold shadow-md transition-colors"
+          title={`Reset map to ${currentRegion.name} sector`}
+        >
+          <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Reset Sector View</span>
+        </button>
+
+        {/* Layer Visibility Toggle */}
         <div className="relative">
           <button
-            id="btn-toggle-layers"
             onClick={() => setShowLayerMenu(!showLayerMenu)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1f2937]/90 hover:bg-gray-700 border border-gray-600 rounded-lg text-xs font-semibold text-gray-200 shadow-xl transition-all"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#1f2937]/90 hover:bg-gray-700 text-gray-200 border border-gray-600 rounded-md text-xs font-semibold shadow-md transition-colors"
           >
             <Layers className="w-3.5 h-3.5 text-cyan-400" />
             <span>Map Layers</span>
           </button>
 
           {showLayerMenu && (
-            <div className="absolute right-0 mt-2 w-48 bg-[#111827] border border-gray-700 rounded-lg shadow-2xl p-2.5 text-xs text-gray-200 space-y-2">
-              <div className="font-bold text-[11px] text-gray-400 border-b border-gray-800 pb-1">
-                TACTICAL OVERLAYS
+            <div className="absolute right-0 mt-1 w-48 bg-[#111827] border border-gray-700 rounded-lg p-2.5 shadow-2xl z-50 text-xs text-gray-300 flex flex-col gap-2">
+              <div className="font-bold text-gray-200 border-b border-gray-800 pb-1 text-[11px] uppercase tracking-wider">
+                Active Tactical Overlays
               </div>
               <label className="flex items-center gap-2 cursor-pointer hover:text-white">
                 <input
@@ -444,7 +431,7 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
                   onChange={(e) => setShowHabitations(e.target.checked)}
                   className="accent-cyan-500 rounded"
                 />
-                <span>Habitations (10)</span>
+                <span>Habitations ({habitations.length})</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer hover:text-white">
                 <input
@@ -453,7 +440,7 @@ export const TacticalMap: React.FC<TacticalMapProps> = ({
                   onChange={(e) => setShowShelters(e.target.checked)}
                   className="accent-cyan-500 rounded"
                 />
-                <span>Candidate Shelters (5)</span>
+                <span>Candidate Shelters ({shelters.length})</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer hover:text-white">
                 <input
