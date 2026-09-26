@@ -101,7 +101,7 @@ export class AlertEngine {
       hazard_alert_type: hazardType,
       headline,
       description,
-      recommendedAction,
+      recommended_action: recommendedAction,
       sms_preview: smsPreview,
       whatsapp_preview: whatsappPreview,
       cap_xml_preview: capXmlPreview,
